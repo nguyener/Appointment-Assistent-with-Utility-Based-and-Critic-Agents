@@ -20,7 +20,8 @@ class PatientPreferences(BaseModel):
     preferred_specialty: str = "primary care"
     preferred_days: list[str] = Field(default_factory=list)
     preferred_time_of_day: Literal["morning", "afternoon", "evening"] | None = None
-    max_distance_miles: float = 25.0
+    #max_distance_miles: float = 25.0
+    max_distance_miles: float | None = None
     earliest_date: str | None = None
     latest_date: str | None = None
     weights: UtilityWeights = Field(default_factory=UtilityWeights)

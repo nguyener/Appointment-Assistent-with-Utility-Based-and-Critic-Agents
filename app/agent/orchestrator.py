@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from time import perf_counter
 from collections.abc import Callable
 from typing import Any
 
@@ -20,6 +21,9 @@ from app.schemas.models import (
     PlannerOutput,
 )
 from app.tools.appointment_tools import find_appointments, schedule_appointment
+from app.memory.repository import EpisodicMemoryRepository
+from app.memory.sqlite_repository import SQLiteEpisodicMemoryRepository
+from app.schemas.episode import AgentExecutionEpisode, EpisodeOutcome
 
 ExecutionContext = dict[str, Any]
 ActionHandler = Callable[[PlanStep, PlannerOutput, ExecutionContext], PlanStepExecution]
@@ -32,6 +36,7 @@ class UtilityHealthcareOrchestrator:
         self,
         llm: StructuredLLM | None = None,
         max_plan_retries: int = 2,
+        episodic_memory: EpisodicMemoryRepository | None = None,
     ) -> None:
         if max_plan_retries < 0:
             raise ValueError("max_plan_retries must be zero or greater")
@@ -43,7 +48,7 @@ class UtilityHealthcareOrchestrator:
         self.critic = CriticAgent(shared_llm)
         self.evaluator = UtilityEvaluator()
         self.max_plan_retries = max_plan_retries
-
+        self.episodic_memory = episodic_memory or SQLiteEpisodicMemoryRepository()    
         # The registry maps the planner's symbolic business actions to real code.
         # Adding an action requires registering a handler, not expanding a workflow if/elif chain.
         self.action_handlers: dict[PlanAction, ActionHandler] = {
@@ -52,8 +57,9 @@ class UtilityHealthcareOrchestrator:
             PlanAction.RANK_OPTIONS: self._execute_rank_options,
         }
 
-    def handle(self, user_message: str, include_trace: bool = True) -> AgentResponse:
+    def _handle_internal(self, user_message: str, include_trace: bool = True) -> AgentResponse:
         plan = self.planner.create_plan(user_message)
+        print("Planner preferences:", plan.preferences.model_dump())
         last_issues: list[str] = []
 
         # One initial plan plus the configured number of revisions. A rejection can
@@ -119,7 +125,27 @@ class UtilityHealthcareOrchestrator:
                 )
 
             decision = context.get("decision")
+            if decision is None:
+                return AgentResponse(
+                    success=False,
+                    message="Business plan finished without producing a utility decision.",
+                    requires_confirmation=False,
+                )
+            
+            if decision.selected is None:
+                return AgentResponse(
+                    success=False,
+                    message="No appointments satisfy the required constraints.",
+                    requires_confirmation=False,
+                )
             recommendation = context.get("recommendation")
+            if recommendation is None:
+                return AgentResponse(
+                    success=False,
+                    message="Business plan finished without producing a recommendation.",
+                    requires_confirmation=False,
+                )
+
             if decision is None or recommendation is None:
                 return AgentResponse(
                     success=False,
@@ -219,6 +245,39 @@ class UtilityHealthcareOrchestrator:
             requires_confirmation=False,
         )
 
+    def handle(
+        self,
+        user_message: str,
+        include_trace: bool = True,
+)   -> AgentResponse:
+        started_at = perf_counter()
+
+        # Always build the trace for episodic memory. It can be removed from
+        # the response returned to the API caller afterward.
+        response = self._handle_internal(
+            user_message=user_message,
+            include_trace=True,
+        )
+
+        duration_ms = max(
+            0,
+            round((perf_counter() - started_at) * 1000),
+        )
+
+        episode = AgentExecutionEpisode(
+            user_message=user_message,
+            outcome=self._classify_episode_outcome(response),
+            response=response,
+            duration_ms=duration_ms,
+        )
+
+        self.episodic_memory.save(episode)
+
+        if include_trace:
+            return response
+
+        return response.model_copy(update={"trace": None})
+        
     def _execute_find_appointments(
         self, step: PlanStep, plan: PlannerOutput, context: ExecutionContext
     ) -> PlanStepExecution:
@@ -227,6 +286,8 @@ class UtilityHealthcareOrchestrator:
             raise RuntimeError(tool_result.error or "Appointment search failed")
         slots = [AppointmentSlot.model_validate(item) for item in tool_result.data]
         context["slots"] = slots
+        print(f"Found {len(slots)} candidate appointments for specialty {plan.preferences.preferred_specialty}.")
+        print(f"Slots: {[slot.slot_id for slot in slots]}")
         return PlanStepExecution(
             step_id=step.step_id,
             action=step.action.value,
@@ -241,7 +302,11 @@ class UtilityHealthcareOrchestrator:
         slots = context.get("slots")
         if not isinstance(slots, list):
             raise RuntimeError("evaluate_options requires find_appointments output")
+        print("Planner preferences:", plan.preferences.model_dump())
         decision = self.evaluator.evaluate(slots, plan.preferences)
+        print(f"Evaluated {decision} candidate appointments.")
+        print("Selected:", decision.selected)
+
         context["decision"] = decision
         detail = (
             "No candidate satisfied the hard constraints."
@@ -413,6 +478,33 @@ class UtilityHealthcareOrchestrator:
             f"{slot.start_time:%A, %B %d at %I:%M %p}, "
             f"{slot.distance_miles:g} miles away. Would you like me to book this slot?"
         )
+    
+    @staticmethod
+    def _classify_episode_outcome(response: AgentResponse) -> EpisodeOutcome:
+        if response.success and response.requires_confirmation:
+            return EpisodeOutcome.RECOMMENDATION_READY
+
+        message = response.message.lower()
+
+        if message.startswith("please provide:"):
+            return EpisodeOutcome.MISSING_INFORMATION
+
+        if message.startswith("plan failed validation"):
+            return EpisodeOutcome.PLAN_REJECTED
+
+        if message.startswith("plan execution failed"):
+            return EpisodeOutcome.EXECUTION_FAILED
+
+        if "without producing a recommendation" in message:
+            return EpisodeOutcome.NO_RECOMMENDATION
+
+        if "no appointments satisfy" in message:
+            return EpisodeOutcome.NO_ELIGIBLE_APPOINTMENTS
+
+        if message.startswith("recommendation failed validation"):
+            return EpisodeOutcome.RECOMMENDATION_REJECTED
+
+        return EpisodeOutcome.UNKNOWN_FAILURE
 
     def confirm(self, patient_id: str, slot_id: str) -> dict:
         return schedule_appointment(patient_id, slot_id).model_dump(mode="json")

@@ -27,24 +27,54 @@ class UtilityEvaluator:
             requires_confirmation=True,
         )
 
-    def _apply_hard_constraints(self, slots: list[AppointmentSlot], p: PatientPreferences) -> tuple[list[AppointmentSlot], list[str]]:
-        result = [s for s in slots if s.in_network and s.distance_miles <= p.max_distance_miles]
-        constraints = ["in-network only", f"distance <= {p.max_distance_miles:g} miles"]
+    def _apply_hard_constraints(
+        self,
+        slots: list[AppointmentSlot],
+        p: PatientPreferences,
+    ) -> tuple[list[AppointmentSlot], list[str]]:
+        result = [slot for slot in slots if slot.in_network]
+        constraints = ["in-network only"]
+
+        if p.max_distance_miles is not None:
+            result = [
+                slot
+                for slot in result
+                if slot.distance_miles <= p.max_distance_miles
+            ]
+            constraints.append(
+                f"distance <= {p.max_distance_miles:g} miles"
+            )
+
         if p.earliest_date:
             earliest = datetime.fromisoformat(p.earliest_date)
-            result = [s for s in result if s.start_time >= earliest]
+            result = [
+                slot
+                for slot in result
+                if slot.start_time >= earliest
+            ]
             constraints.append(f"on or after {p.earliest_date}")
+
         if p.latest_date:
             latest = datetime.fromisoformat(p.latest_date)
-            result = [s for s in result if s.start_time <= latest]
+            result = [
+                slot
+                for slot in result
+                if slot.start_time <= latest
+            ]
             constraints.append(f"on or before {p.latest_date}")
+
         return result, constraints
 
     def _score(self, slot: AppointmentSlot, p: PatientPreferences) -> ScoredOption:
         now = datetime.now()
         days_away = max((slot.start_time - now).total_seconds() / 86400, 0)
         availability = exp(-days_away / 10) * 100
-        distance = max(0.0, 100 * (1 - slot.distance_miles / max(p.max_distance_miles, 1)))
+        distance_scale = p.max_distance_miles or 25.0
+        distance = max(
+            0.0,
+            100 * (1 - slot.distance_miles / distance_scale),
+        )
+
         provider = 100.0 if p.preferred_provider and p.preferred_provider.lower() in slot.provider_name.lower() else (50.0 if not p.preferred_provider else 0.0)
         time_pref = self._time_score(slot.start_time.hour, p.preferred_time_of_day)
         cost = max(0.0, 100 - slot.estimated_cost)
