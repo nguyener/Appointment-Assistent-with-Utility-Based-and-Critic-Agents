@@ -63,18 +63,18 @@ class UtilityHealthcareOrchestrator:
         
         # Retrieve relevant past episodes from memory and format them for the planner.
         episodes = self.memory_retriever.retrieve(user_message,limit=3,)
-        print(
-            "Retrieved episodic memories:",
-            [episode.user_message for episode in episodes],
-        )
+       
         memory_context = self.memory_retriever.format_episodes_for_planner(episodes)
+        print(
+            "Retrieved memory_context:", memory_context
+        )
         
         plan = self.planner.create_plan(
             user_message,
             memory_context=memory_context or None
         )
 
-        print("Planner preferences:", plan.preferences.model_dump())
+        #print("Planner preferences:", plan.preferences.model_dump())
         last_issues: list[str] = []
 
         # One initial plan plus the configured number of revisions. A rejection can
@@ -301,8 +301,8 @@ class UtilityHealthcareOrchestrator:
             raise RuntimeError(tool_result.error or "Appointment search failed")
         slots = [AppointmentSlot.model_validate(item) for item in tool_result.data]
         context["slots"] = slots
-        print(f"Found {len(slots)} candidate appointments for specialty {plan.preferences.preferred_specialty}.")
-        print(f"Slots: {[slot.slot_id for slot in slots]}")
+        #print(f"Found {len(slots)} candidate appointments for specialty {plan.preferences.preferred_specialty}.")
+        #print(f"Slots: {[slot.slot_id for slot in slots]}")
         return PlanStepExecution(
             step_id=step.step_id,
             action=step.action.value,
@@ -317,10 +317,10 @@ class UtilityHealthcareOrchestrator:
         slots = context.get("slots")
         if not isinstance(slots, list):
             raise RuntimeError("evaluate_options requires find_appointments output")
-        print("Planner preferences:", plan.preferences.model_dump())
+        #print("Planner preferences:", plan.preferences.model_dump())
         decision = self.evaluator.evaluate(slots, plan.preferences)
-        print(f"Evaluated {decision} candidate appointments.")
-        print("Selected:", decision.selected)
+        #print(f"Evaluated {decision} candidate appointments.")
+        #print("Selected:", decision.selected)
 
         context["decision"] = decision
         detail = (
