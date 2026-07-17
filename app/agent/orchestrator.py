@@ -23,6 +23,7 @@ from app.schemas.models import (
 from app.tools.appointment_tools import find_appointments, schedule_appointment
 from app.memory.repository import EpisodicMemoryRepository
 from app.memory.sqlite_repository import SQLiteEpisodicMemoryRepository
+from app.memory.retriever import EpisodicMemoryRetriever
 from app.schemas.episode import AgentExecutionEpisode, EpisodeOutcome
 
 ExecutionContext = dict[str, Any]
@@ -48,7 +49,8 @@ class UtilityHealthcareOrchestrator:
         self.critic = CriticAgent(shared_llm)
         self.evaluator = UtilityEvaluator()
         self.max_plan_retries = max_plan_retries
-        self.episodic_memory = episodic_memory or SQLiteEpisodicMemoryRepository()    
+        self.episodic_memory = episodic_memory or SQLiteEpisodicMemoryRepository()  
+        self.memory_retriever = EpisodicMemoryRetriever(self.episodic_memory)  
         # The registry maps the planner's symbolic business actions to real code.
         # Adding an action requires registering a handler, not expanding a workflow if/elif chain.
         self.action_handlers: dict[PlanAction, ActionHandler] = {
@@ -58,7 +60,20 @@ class UtilityHealthcareOrchestrator:
         }
 
     def _handle_internal(self, user_message: str, include_trace: bool = True) -> AgentResponse:
-        plan = self.planner.create_plan(user_message)
+        
+        # Retrieve relevant past episodes from memory and format them for the planner.
+        episodes = self.memory_retriever.retrieve(user_message,limit=3,)
+        print(
+            "Retrieved episodic memories:",
+            [episode.user_message for episode in episodes],
+        )
+        memory_context = self.memory_retriever.format_episodes_for_planner(episodes)
+        
+        plan = self.planner.create_plan(
+            user_message,
+            memory_context=memory_context or None
+        )
+
         print("Planner preferences:", plan.preferences.model_dump())
         last_issues: list[str] = []
 
