@@ -7,6 +7,7 @@ from typing import Any
 from app.agent.critic_agent import CriticAgent
 from app.agent.plan_critic_agent import PlanCriticAgent
 from app.agent.planner_agent import PlannerAgent
+from app.agent.reflection_agent import ReflectionAgent
 from app.agent.utility import UtilityEvaluator
 from app.agent.utility_llm_agent import LLMUtilityAgent
 from app.llm.client import OpenAIStructuredLLM, StructuredLLM
@@ -47,6 +48,7 @@ class UtilityHealthcareOrchestrator:
         self.utility_agent = LLMUtilityAgent(shared_llm)
         self.plan_critic = PlanCriticAgent(shared_llm)
         self.critic = CriticAgent(shared_llm)
+        self.reflection_agent = ReflectionAgent(shared_llm)
         self.evaluator = UtilityEvaluator()
         self.max_plan_retries = max_plan_retries
         self.episodic_memory = episodic_memory or SQLiteEpisodicMemoryRepository()  
@@ -285,6 +287,22 @@ class UtilityHealthcareOrchestrator:
             response=response,
             duration_ms=duration_ms,
         )
+
+        try:
+            reflection = self.reflection_agent.reflect(episode)
+            episode = episode.model_copy(
+                update={
+                    "reflection": reflection,
+                }
+            )
+        except Exception as exc:
+            episode = episode.model_copy(
+                update={
+                    "reflection_error": (
+                        f"{type(exc).__name__}: {exc}"
+                    ),
+                }
+            )
 
         self.episodic_memory.save(episode)
 

@@ -20,6 +20,19 @@ class EpisodeOutcome(StrEnum):
     UNKNOWN_FAILURE = "unknown_failure"
 
 
+class EpisodeReflection(BaseModel):
+    """Reusable lessons extracted from one completed execution."""
+
+    summary: str
+    user_goal: str
+
+    important_constraints: list[str] = Field(default_factory=list)
+    what_worked: list[str] = Field(default_factory=list)
+    what_failed: list[str] = Field(default_factory=list)
+    lessons: list[str] = Field(default_factory=list)
+
+    recommended_future_action: str | None = None
+
 class AgentExecutionEpisode(BaseModel):
     """A historical record of one complete agent request."""
 
@@ -32,3 +45,5 @@ class AgentExecutionEpisode(BaseModel):
     outcome: EpisodeOutcome
     response: AgentResponse
     duration_ms: int = Field(ge=0)
+    reflection: EpisodeReflection | None = None
+    reflection_error: str | None = None
