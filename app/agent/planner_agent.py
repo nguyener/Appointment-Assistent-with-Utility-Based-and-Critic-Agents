@@ -34,12 +34,17 @@ Planning rules:
 - Normalize specialty wording: "primary-care", "primary care doctor", and "PCP" become "primary care".
 - Do not invent patient facts, appointment slots, or booking results.
 - Do not book anything.
-- Relevant past executions may be included as episodic-memory examples.
-- Treat past executions only as reference examples; the current user request is always the source of truth.
-- Do not copy patient-specific facts, dates, locations, providers, appointment slots, or preferences
-  from memory unless they are also stated in the current request.
-- Do not assume that a past plan is correct for the current request.
-
+- Reflected past experience may be included as episodic-memory context.
+- Use memory only for reusable planning lessons and workflow guidance.
+- The current user request is always the source of truth.
+- Do not copy patient-specific facts, dates, locations, providers,
+  appointment slots, or preferences from memory unless they are also
+  stated in the current request.
+- Do not assume that a previously available provider or appointment
+  remains available.
+- Do not treat a one-time preference as a permanent user preference.
+- Do not assume that a past workflow is correct for the current request.
+- Always use find_appointments to retrieve current availability.
 Return structured output only."""
 
     REVISION_SYSTEM_PROMPT = """You are revising a rejected healthcare appointment business plan.
@@ -116,7 +121,7 @@ Return structured output only."""
             sections.extend(
                 [
                     "",
-                    "Relevant successful past executions:",
+                    "Relevant reflected past executions:",
                     memory_context,
                 ]
             )

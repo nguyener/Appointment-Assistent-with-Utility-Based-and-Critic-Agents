@@ -91,6 +91,9 @@ class EpisodicMemoryRetriever:
             if episode.outcome not in _USEFUL_OUTCOMES:
                 continue
 
+            if episode.reflection is None:
+                continue
+
             episode_terms = self._episode_terms(episode)
 
             shared_terms = query_terms & episode_terms
@@ -129,28 +132,32 @@ class EpisodicMemoryRetriever:
         cls,
         episode: AgentExecutionEpisode,
     ) -> set[str]:
+        """
+        Build searchable terms from the original request and its
+        distilled reflection.
+        """
 
         values = [
             episode.user_message,
         ]
 
-        trace = episode.response.trace
+        reflection = episode.reflection
 
-        if trace is not None:
-            preference_values = (
-                trace.planner
-                .preferences
-                .model_dump(exclude_none=True)
-                .values()
-            )
-
+        if reflection is not None:
             values.extend(
-                str(value)
-                for value in preference_values
+                [
+                    reflection.summary,
+                    reflection.user_goal,
+                    *reflection.important_constraints,
+                    *reflection.what_worked,
+                    *reflection.what_failed,
+                    *reflection.lessons,
+                    reflection.recommended_future_action or "",
+                ]
             )
 
         return cls._terms(" ".join(values))
-    
+        
     @staticmethod
     def _terms(text: str) -> set[str]:
         return {
@@ -162,64 +169,79 @@ class EpisodicMemoryRetriever:
             and token not in _STOP_WORDS
         }
     
-
-   
-    def format_episodes_for_planner(self,
+    def format_episodes_for_planner(
+        self,
         episodes: list[AgentExecutionEpisode],
     ) -> str:
+        """
+        Format distilled reflections instead of raw execution traces.
+        """
 
         if not episodes:
-            return (
-                "No relevant previous successful experiences "
-                "were found. Create the plan from the current "
-                "request only."
-            )
+            return ""
 
         formatted_episodes: list[str] = []
 
-        for episode in episodes:
-            trace = episode.response.trace
-            if trace is None:
+        for index, episode in enumerate(
+            episodes,
+            start=1,
+        ):
+            reflection = episode.reflection
+
+            if reflection is None:
                 continue
-            preferences = trace.planner.preferences.model_dump(exclude={"weights"})
-            preferences = {
-                name:value
-                for name, value in preferences.items() if value not in ("", [], {})
-            }
 
-            workflow = [
-                step.action.value
-                for step in trace.planner.steps
+            sections = [
+                f"Reflected experience {index}:",
+                f"Summary: {reflection.summary}",
+                f"User goal: {reflection.user_goal}",
             ]
 
-            preference_lines = [
-                f"- {name}: {value}"
-                for name, value in preferences.items()
-            ]
+            if reflection.important_constraints:
+                sections.append("Important constraints:")
 
-            workflow_lines = [
-                f"{index}. {action}"
-                for index, action in enumerate(
-                    workflow,
-                    start=1,
+                sections.extend(
+                    f"- {constraint}"
+                    for constraint
+                    in reflection.important_constraints
                 )
-            ]
-            
+
+            if reflection.what_worked:
+                sections.append("What worked:")
+
+                sections.extend(
+                    f"- {item}"
+                    for item in reflection.what_worked
+                )
+
+            if reflection.what_failed:
+                sections.append("What failed:")
+
+                sections.extend(
+                    f"- {item}"
+                    for item in reflection.what_failed
+                )
+
+            if reflection.lessons:
+                sections.append("Reusable lessons:")
+
+                sections.extend(
+                    f"- {lesson}"
+                    for lesson in reflection.lessons
+                )
+
+            if reflection.recommended_future_action:
+                sections.append(
+                    "Recommended future approach: "
+                    + reflection.recommended_future_action
+                )
+
             formatted_episodes.append(
-                "\n".join(
-                    [
-                        "Previous successful execution:",
-                        "",
-                        "User request:",
-                        episode.user_message,
-                        "",
-                        "Extracted preferences:",
-                        *preference_lines,
-                        "",
-                        "Successful workflow:",
-                        *workflow_lines,
-                    ]
-                )
+                "\n".join(sections)
             )
+
+        return "\n\n---\n\n".join(
+            formatted_episodes
+        )
+   
     
-        return "\n\n---\n\n".join(formatted_episodes)
