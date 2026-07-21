@@ -1,5 +1,5 @@
-from app.memory import EpisodicMemoryRepository
-from app.memory import SQLiteEpisodicMemoryRepository
+from app.memory.repository import EpisodicMemoryRepository
+from app.memory.sqlite_repository import SQLiteEpisodicMemoryRepository
 
 __all__ = [
     "EpisodicMemoryRepository",
