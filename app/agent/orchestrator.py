@@ -64,11 +64,15 @@ class UtilityHealthcareOrchestrator:
     def _handle_internal(self, user_message: str, include_trace: bool = True) -> AgentResponse:
         
         # Retrieve relevant past episodes from memory and format them for the planner.
-        episodes = self.memory_retriever.retrieve(user_message,limit=3,)
+        episodes = self.memory_retriever.retrieve(
+            user_message,
+            limit=3,
+        )
        
         memory_context = self.memory_retriever.format_episodes_for_planner(episodes)
+
         print(
-            "Retrieved memory_context:", memory_context
+            "Retrieved reflected memory_context:", memory_context or None
         )
         
         plan = self.planner.create_plan(

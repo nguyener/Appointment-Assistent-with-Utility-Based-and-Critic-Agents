@@ -21,17 +21,17 @@ class EpisodeOutcome(StrEnum):
 
 
 class EpisodeReflection(BaseModel):
-    """Reusable lessons extracted from one completed execution."""
+    """A concise interpretation of one completed execution."""
 
     summary: str
     user_goal: str
 
     important_constraints: list[str] = Field(default_factory=list)
-    what_worked: list[str] = Field(default_factory=list)
-    what_failed: list[str] = Field(default_factory=list)
-    lessons: list[str] = Field(default_factory=list)
+    successful_actions: list[str] = Field(default_factory=list)
+    unsuccessful_actions: list[str] = Field(default_factory=list)
+    observations: list[str] = Field(default_factory=list)
+    next_time_considerations: list[str] = Field(default_factory=list)
 
-    recommended_future_action: str | None = None
 
 class AgentExecutionEpisode(BaseModel):
     """A historical record of one complete agent request."""

@@ -34,14 +34,19 @@ Planning rules:
 - Normalize specialty wording: "primary-care", "primary care doctor", and "PCP" become "primary care".
 - Do not invent patient facts, appointment slots, or booking results.
 - Do not book anything.
-- Reflected past experience may be included as episodic-memory context.
-- Use memory only for reusable planning lessons and workflow guidance.
+- Reflections about individual past episodes may be included as
+  episodic-memory context.
+- Each memory describes one historical execution, not a universal rule.
+- Use memory to understand what happened in similar situations.
 - The current user request is always the source of truth.
+- Do not automatically repeat a successful action from a past episode.
 - Do not copy patient-specific facts, dates, locations, providers,
   appointment slots, or preferences from memory unless they are also
   stated in the current request.
 - Do not assume that a previously available provider or appointment
   remains available.
+- Do not assume that an observation from one episode is generally true.
+- Always retrieve current appointment availability.
 - Do not treat a one-time preference as a permanent user preference.
 - Do not assume that a past workflow is correct for the current request.
 - Always use find_appointments to retrieve current availability.
@@ -121,7 +126,7 @@ Return structured output only."""
             sections.extend(
                 [
                     "",
-                    "Relevant reflected past executions:",
+                    "Relevant reflected past episodes:",
                     memory_context,
                 ]
             )

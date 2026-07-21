@@ -133,8 +133,7 @@ class EpisodicMemoryRetriever:
         episode: AgentExecutionEpisode,
     ) -> set[str]:
         """
-        Build searchable terms from the original request and its
-        distilled reflection.
+        Build similarity terms from the original event and its reflection.
         """
 
         values = [
@@ -149,10 +148,10 @@ class EpisodicMemoryRetriever:
                     reflection.summary,
                     reflection.user_goal,
                     *reflection.important_constraints,
-                    *reflection.what_worked,
-                    *reflection.what_failed,
-                    *reflection.lessons,
-                    reflection.recommended_future_action or "",
+                    *reflection.successful_actions,
+                    *reflection.unsuccessful_actions,
+                    *reflection.observations,
+                    *reflection.next_time_considerations,
                 ]
             )
 
@@ -174,7 +173,7 @@ class EpisodicMemoryRetriever:
         episodes: list[AgentExecutionEpisode],
     ) -> str:
         """
-        Format distilled reflections instead of raw execution traces.
+        Format concise reflected episodes for planner context.
         """
 
         if not episodes:
@@ -192,56 +191,59 @@ class EpisodicMemoryRetriever:
                 continue
 
             sections = [
-                f"Reflected experience {index}:",
+                f"Past episode {index}:",
                 f"Summary: {reflection.summary}",
-                f"User goal: {reflection.user_goal}",
+                f"Goal in that episode: {reflection.user_goal}",
             ]
 
             if reflection.important_constraints:
-                sections.append("Important constraints:")
-
+                sections.append("Constraints in that episode:")
                 sections.extend(
                     f"- {constraint}"
                     for constraint
                     in reflection.important_constraints
                 )
 
-            if reflection.what_worked:
-                sections.append("What worked:")
-
+            if reflection.successful_actions:
+                sections.append("Actions that succeeded:")
                 sections.extend(
-                    f"- {item}"
-                    for item in reflection.what_worked
+                    f"- {action}"
+                    for action
+                    in reflection.successful_actions
                 )
 
-            if reflection.what_failed:
-                sections.append("What failed:")
-
-                sections.extend(
-                    f"- {item}"
-                    for item in reflection.what_failed
-                )
-
-            if reflection.lessons:
-                sections.append("Reusable lessons:")
-
-                sections.extend(
-                    f"- {lesson}"
-                    for lesson in reflection.lessons
-                )
-
-            if reflection.recommended_future_action:
+            if reflection.unsuccessful_actions:
                 sections.append(
-                    "Recommended future approach: "
-                    + reflection.recommended_future_action
+                    "Actions that failed or caused difficulty:"
+                )
+                sections.extend(
+                    f"- {action}"
+                    for action
+                    in reflection.unsuccessful_actions
+                )
+
+            if reflection.observations:
+                sections.append("Episode observations:")
+                sections.extend(
+                    f"- {observation}"
+                    for observation
+                    in reflection.observations
+                )
+
+            if reflection.next_time_considerations:
+                sections.append(
+                    "Considerations for a similar request:"
+                )
+                sections.extend(
+                    f"- {consideration}"
+                    for consideration
+                    in reflection.next_time_considerations
                 )
 
             formatted_episodes.append(
                 "\n".join(sections)
             )
 
-        return "\n\n---\n\n".join(
-            formatted_episodes
-        )
-   
+        return "\n\n---\n\n".join(formatted_episodes)
     
+        
